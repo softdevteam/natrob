@@ -92,6 +92,27 @@ pub fn narrowable(args: TokenStream, input: TokenStream) -> TokenStream {
                     objptr
                 }
             }
+
+            /// Try casting this narrow trait object to a concrete struct type `U`, returning
+            /// `Some(...)` if this narrow trait object has stored an object of type `U` or `None`
+            /// otherwise.
+            pub fn downcast<U: #trait_id>(&self) -> Option<&U> {
+                let t_vtable = {
+                    let t: &dyn #trait_id = unsafe { &*(0 as *const U) };
+                    unsafe { ::std::mem::transmute::<&dyn #trait_id, (usize, usize)>(t) }.1
+                };
+
+                let vtable = unsafe {
+                    let vtableptr = self.objptr.sub(::std::mem::size_of::<usize>());
+                    ::std::ptr::read(vtableptr as *mut usize)
+                };
+
+                if t_vtable == vtable {
+                    Some(unsafe { &*(self.objptr as *const U) })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::std::ops::Deref for #struct_id {
