@@ -1,0 +1,28 @@
+[package]
+name = "natrob"
+description = "NArrow TRait OBjects: thin pointers to trait objects"
+repository = "https://github.com/softdevteam/natrob/"
+version = "0.1.0"
+authors = ["Laurence Tratt <laurie@tratt.net>"]
+readme = "README.md"
+# This should be "Apache-2.0 OR MIT OR UPL-1.0" but crates.io doesn't know about
+# UPL-1.0.
+license = "Apache-2.0 OR MIT"
+categories = ["development-tools"]
+edition = "2018"
+
+[lib]
+proc-macro = true
+
+[[test]]
+name = "proc_macro_tests"
+path = "proc_macro_tests/run.rs"
+harness = false
+
+[dev-dependencies]
+lang_tester = "0.3"
+tempdir = "0.3"
+
+[dependencies]
+syn = { version="0.15", features=["full"] }
+quote = "0.6"
