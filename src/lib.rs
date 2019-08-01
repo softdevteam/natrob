@@ -107,6 +107,17 @@ pub fn narrowable(args: TokenStream, input: TokenStream) -> TokenStream {
             }
         }
 
+        impl ::std::ops::DerefMut for #struct_id {
+            fn deref_mut(&mut self) -> &mut (dyn #trait_id + 'static) {
+                unsafe {
+                    let vtableptr = self.objptr.sub(::std::mem::size_of::<usize>());
+                    let vtable = ::std::ptr::read(vtableptr as *mut usize);
+                    ::std::mem::transmute::<(*const _, usize), &mut dyn #trait_id>(
+                        (self.objptr, vtable))
+                }
+            }
+        }
+
         impl ::std::ops::Drop for #struct_id {
             fn drop(&mut self) {
                 let fatptr = unsafe {
