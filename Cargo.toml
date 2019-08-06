@@ -26,3 +26,6 @@ tempdir = "0.3"
 [dependencies]
 syn = { version="0.15", features=["full"] }
 quote = "0.6"
+
+[features]
+abgc = []
