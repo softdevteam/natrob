@@ -183,14 +183,16 @@ pub fn narrowable_abgc(args: TokenStream, input: TokenStream) -> TokenStream {
     let trait_id = &input.ident;
     let expanded = quote! {
         /// A narrow pointer to #trait_id.
-        pub struct #struct_id;
-        // This struct points to a vtable pointer followed by an object. In other words, on a
-        // 64 bit machine the layout is (in bytes):
-        //   0..7: vtable
-        //   8..: object
-        // This is an inflexible layout, since we can only support structs whose alignment is the
-        // same or less than a usize's. However, we're stuck for the time being, since abgc can't
-        // handle interior pointers.
+        pub struct #struct_id {
+            // This struct points to a vtable pointer followed by an object. In other words, on a
+            // 64 bit machine the layout is (in bytes):
+            //   0..7: vtable
+            //   8..: object
+            // This is an inflexible layout, since we can only support structs whose alignment is
+            // the same or less than a usize's. However, we're stuck for the time being, since abgc
+            // can't handle interior pointers.
+            vtable: *mut u8
+        }
 
         impl #struct_id {
             /// Create a new narrow pointer to #trait_id.
