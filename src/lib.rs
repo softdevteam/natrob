@@ -223,6 +223,15 @@ pub fn narrowable_abgc(args: TokenStream, input: TokenStream) -> TokenStream {
                 unsafe { ::abgc::Gc::from_raw(baseptr) }
             }
 
+            // In the future, this function could be made safe if:
+            //   1) `downcast` returns `Option<Recoverable<&U>>` where `Recoverable` is a simple
+            //      wrapper around a reference.
+            //   2) A new `deref_recoverable` function returns objects of type
+            //      `Recoverable<dyn #trait_id>`.
+            //   3) `recover` then only takes in objects of type `Recoverable<dyn #trait_id>`.
+            //   4) Rust allows unsized rvalues (RFC 1909) *and* when the
+            //      `receiver_is_dispatchable` function in `object_safety.rs` in rustc is
+            //      updated to allow unsized rvalues.
             pub unsafe fn recover(o: &dyn Obj) -> ::abgc::Gc<#struct_id> {
                 let objptr = o as *const _;
                 let baseptr = (objptr as *const usize).sub(1);
