@@ -200,10 +200,10 @@ pub fn narrowable_abgc(args: TokenStream, input: TokenStream) -> TokenStream {
 
                 let baseptr = ::abgc::Gc::<#struct_id>::alloc_blank(layout);
                 unsafe {
-                    let objptr = (baseptr as *mut u8).add(uoff);
+                    let objptr = (baseptr.as_ptr() as *mut u8).add(uoff);
                     let t: &dyn #trait_id = &v;
                     let vtable = ::std::mem::transmute::<*const dyn #trait_id, (usize, usize)>(t).1;
-                    ::std::ptr::write(baseptr as *mut usize, vtable);
+                    ::std::ptr::write(baseptr.as_ptr() as *mut usize, vtable);
                     if ::std::mem::size_of::<U>() != 0 {
                         objptr.copy_from_nonoverlapping(&v as *const U as *const u8,
                             ::std::mem::size_of::<U>());
@@ -224,9 +224,9 @@ pub fn narrowable_abgc(args: TokenStream, input: TokenStream) -> TokenStream {
             //      `receiver_is_dispatchable` function in `object_safety.rs` in rustc is
             //      updated to allow unsized rvalues.
             pub unsafe fn recover(o: &dyn Obj) -> ::abgc::Gc<#struct_id> {
-                let objptr = o as *const _;
-                let baseptr = (objptr as *const usize).sub(1);
-                Gc::recover(baseptr as *const u8 as *const #struct_id)
+                let objptr = o as *const Obj as *mut Obj;
+                let baseptr = (objptr as *mut usize).sub(1);
+                Gc::recover(::std::ptr::NonNull::new_unchecked(baseptr as *mut u8 as *mut #struct_id))
             }
 
             /// Try casting this narrow trait object to a concrete struct type `U`, returning
