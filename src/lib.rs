@@ -308,3 +308,114 @@ pub fn narrowable_abgc(args: TokenStream, input: TokenStream) -> TokenStream {
 
     TokenStream::from(expanded)
 }
+
+#[cfg(feature = "gcmalloc")]
+#[proc_macro_attribute]
+pub fn narrowable_gcmalloc(args: TokenStream, input: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(args as AttributeArgs);
+    let input = parse_macro_input!(input as ItemTrait);
+    if args.len() != 1 {
+        panic!("Need precisely one argument to 'narrowable'");
+    }
+    let struct_id = match &args[0] {
+        NestedMeta::Meta(m) => m.name(),
+        NestedMeta::Literal(_) => panic!("Literals not valid attributes to 'narrowable'")
+    };
+    let trait_id = &input.ident;
+    let expanded = quote! {
+        /// A narrow pointer to #trait_id.
+        pub struct #struct_id {
+            // This struct points to a vtable pointer followed by an object. In other words, on a
+            // 64 bit machine the layout is (in bytes):
+            //   0..7: vtable
+            //   8..: object
+            // This is an inflexible layout, since we can only support structs whose alignment is
+            // the same or less than a usize's.
+            vtable: *mut u8
+        }
+
+        impl #struct_id {
+            /// Create a new narrow pointer to #trait_id.
+            pub fn new<U>(v: U) -> ::gcmalloc::Gc<Self>
+            where
+                *const U: ::std::ops::CoerceUnsized<*const (dyn #trait_id + 'static)>,
+                U: #trait_id + 'static
+            {
+                let (layout, uoff) = ::std::alloc::Layout::new::<usize>().extend(
+                    ::std::alloc::Layout::new::<U>()).unwrap();
+                // Check that we've not been given an object whose alignment exceeds that of a
+                // size: we can't handle such cases until abgc can store interior pointers.
+                debug_assert_eq!(uoff, ::std::mem::size_of::<usize>());
+
+                let gc = ::gcmalloc::Gc::<#struct_id>::new_from_layout(layout).unwrap();
+                let baseptr = ::gcmalloc::Gc::into_raw(gc);
+                unsafe {
+                    let objptr = (baseptr as *mut u8).add(uoff);
+                    let t: &dyn #trait_id = &v;
+                    let vtable = ::std::mem::transmute::<*const dyn #trait_id, (usize, usize)>(t).1;
+                    ::std::ptr::write(baseptr as *mut usize, vtable);
+
+                    if ::std::mem::size_of::<U>() != 0 {
+                        objptr.copy_from_nonoverlapping(&v as *const U as *const u8,
+                            ::std::mem::size_of::<U>());
+                    }
+
+                }
+                ::std::mem::forget(v);
+                unsafe { gc.assume_init() }
+            }
+
+            /// Try casting this narrow trait object to a concrete struct type
+            /// `U`, returning `Some(...)` if this narrow trait object has
+            /// stored an object of type `U` or `None` otherwise.
+            pub fn downcast<U: #trait_id>(&self) -> Option<&U> {
+                let t_vtable = {
+                    let t: &dyn #trait_id = unsafe { &*(0 as *const U) };
+                    unsafe { ::std::mem::transmute::<&dyn #trait_id, (usize, usize)>(t) }.1
+                };
+
+                let vtable = unsafe {
+                    ::std::ptr::read(self as *const _ as *const usize)
+                };
+
+                if t_vtable == vtable {
+                    let objptr = unsafe { (self as *const _ as *const usize).add(1) };
+                    Some(unsafe { &*(objptr as *const U) })
+                } else {
+                    None
+                }
+            }
+        }
+
+        impl ::std::ops::Deref for #struct_id {
+            type Target = dyn #trait_id;
+
+            fn deref(&self) -> &(dyn #trait_id + 'static) {
+                unsafe {
+                    let vtable = ::std::ptr::read(self as *const _ as *const usize as *mut usize);
+                    let objptr = (self as *const _ as *const usize).add(1);
+                    ::std::mem::transmute::<(*const _, usize), &dyn #trait_id>(
+                        (objptr, vtable))
+                }
+            }
+        }
+
+        impl ::std::ops::Drop for #struct_id {
+            fn drop(&mut self) {
+                let fatptr = unsafe {
+                    let vtable = ::std::ptr::read(self as *const _ as *const usize as *mut usize);
+                    let objptr = (self as *const _ as *const usize).add(1);
+                    ::std::mem::transmute::<(*const _, usize), &mut dyn #trait_id>(
+                        (objptr, vtable))
+                };
+
+                // Call `drop` on the trait object before deallocating memory.
+                unsafe { ::std::ptr::drop_in_place(fatptr as *mut dyn #trait_id) };
+            }
+        }
+
+        #input
+    };
+
+    TokenStream::from(expanded)
+}
