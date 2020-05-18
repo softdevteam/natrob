@@ -1,7 +1,7 @@
 use std::{fs::read_dir, path::PathBuf, process::Command};
 
 use lang_tester::LangTester;
-use tempdir::TempDir;
+use tempfile::TempDir;
 
 #[cfg(debug_assertions)]
 const DEPS_PATH: &str = "target/debug/deps";
@@ -34,7 +34,7 @@ fn natrob_lib() -> String {
 }
 
 fn main() {
-    let tempdir = TempDir::new("proc_macro_tests").unwrap();
+    let tempdir = TempDir::new().unwrap();
     let natrob_lib = natrob_lib();
     LangTester::new()
         .test_dir("proc_macro_tests")
