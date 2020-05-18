@@ -19,7 +19,7 @@ harness = false
 
 [dev-dependencies]
 lang_tester = "0.3"
-tempdir = "0.3"
+tempfile = "3"
 
 [dependencies]
 syn = { version="0.15", features=["full"] }
