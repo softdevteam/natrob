@@ -356,7 +356,7 @@ pub fn narrowable_rboehm(args: TokenStream, input: TokenStream) -> TokenStream {
 
                 if t_vtable == vtable {
                     let objptr = unsafe { (self as *const _ as *const usize).add(1) };
-                    Some(unsafe { Gc::from_raw(objptr) })
+                    Some(unsafe { Gc::from_raw(objptr as *const U) })
                 } else {
                     None
                 }
