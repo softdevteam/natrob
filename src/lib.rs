@@ -335,7 +335,7 @@ pub fn narrowable_rboehm(args: TokenStream, input: TokenStream) -> TokenStream {
             //   4) Rust allows unsized rvalues (RFC 1909) *and* when the
             //      `receiver_is_dispatchable` function in `object_safety.rs` in rustc is
             //      updated to allow unsized rvalues.
-            pub unsafe fn recover(o: &dyn Obj) -> ::rboehm::Gc<#struct_id> {
+            pub unsafe fn recover(o: &dyn #trait_id) -> ::rboehm::Gc<#struct_id> {
                 let objptr = o as *const _;
                 let baseptr = (objptr as *const usize).sub(1);
                 Gc::from_raw(baseptr as *const u8 as *const #struct_id)
