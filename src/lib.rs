@@ -344,7 +344,7 @@ pub fn narrowable_rboehm(args: TokenStream, input: TokenStream) -> TokenStream {
             /// Try casting this narrow trait object to a concrete struct type
             /// `U`, returning `Some(...)` if this narrow trait object has
             /// stored an object of type `U` or `None` otherwise.
-            pub fn downcast<U: #trait_id>(&self) -> Option<&U> {
+            pub fn downcast<U: #trait_id>(&self) -> Option<Gc<U>> {
                 let t_vtable = {
                     let t: &dyn #trait_id = unsafe { &*(0 as *const U) }; //FIXME: UB
                     unsafe { ::std::mem::transmute::<&dyn #trait_id, (usize, usize)>(t) }.1
@@ -356,7 +356,7 @@ pub fn narrowable_rboehm(args: TokenStream, input: TokenStream) -> TokenStream {
 
                 if t_vtable == vtable {
                     let objptr = unsafe { (self as *const _ as *const usize).add(1) };
-                    Some(unsafe { &*(objptr as *const U) })
+                    Some(unsafe { Gc::from_raw(objptr) })
                 } else {
                     None
                 }
