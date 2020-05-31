@@ -341,6 +341,17 @@ pub fn narrowable_rboehm(args: TokenStream, input: TokenStream) -> TokenStream {
                 Gc::from_raw(baseptr as *const u8 as *const #struct_id)
             }
 
+            /// Convert a downcasted narrow trait object back into a normal narrow trait object.
+            /// This will lead to undefined behaviour if `o` was not originally a narrow trait
+            /// object.
+            pub unsafe fn recover_gc<T: #trait_id>(o: Gc<T>) -> ::rboehm::Gc<#struct_id> {
+                unsafe {
+                    let objptr = Gc::into_raw(o);
+                    let baseptr = (objptr as *const usize).sub(1);
+                    Gc::from_raw(baseptr as *const u8 as *const #struct_id)
+                }
+            }
+
             /// Try casting this narrow trait object to a concrete struct type
             /// `U`, returning `Some(...)` if this narrow trait object has
             /// stored an object of type `U` or `None` otherwise.
