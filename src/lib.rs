@@ -308,7 +308,7 @@ pub fn narrowable_rboehm(args: TokenStream, input: TokenStream) -> TokenStream {
                 // exceeds that of a usize.
                 debug_assert_eq!(uoff, ::std::mem::size_of::<usize>());
 
-                let gc = ::rboehm::Gc::<#struct_id>::new_from_layout(layout).unwrap();
+                let gc = ::rboehm::Gc::<#struct_id>::new_from_layout(layout);
                 let baseptr = ::rboehm::Gc::into_raw(gc);
                 unsafe {
                     let objptr = (baseptr as *mut u8).add(uoff);
