@@ -215,19 +215,9 @@ pub fn narrowable_rboehm(args: TokenStream, input: TokenStream) -> TokenStream {
                 unsafe { gc.assume_init() }
             }
 
-            // In the future, this function could be made safe if:
-            //   1) `downcast` returns `Option<Recoverable<&U>>` where `Recoverable` is a simple
-            //      wrapper around a reference.
-            //   2) A new `deref_recoverable` function returns objects of type
-            //      `Recoverable<dyn #trait_id>`.
-            //   3) `recover` then only takes in objects of type `Recoverable<dyn #trait_id>`.
-            //   4) Rust allows unsized rvalues (RFC 1909) *and* when the
-            //      `receiver_is_dispatchable` function in `object_safety.rs` in rustc is
-            //      updated to allow unsized rvalues.
-            pub unsafe fn recover(o: &dyn #trait_id) -> ::rboehm::Gc<#struct_id> {
-                let objptr = o as *const _;
-                let baseptr = (objptr as *const usize).sub(1);
-                Gc::from_raw(baseptr as *const u8 as *const #struct_id)
+            pub fn as_gc(&self) -> ::rboehm::Gc<dyn #trait_id> {
+                use ::std::ops::Deref;
+                Gc::from_raw(self.deref() as *const _)
             }
 
             /// Convert a downcasted narrow trait object back into a normal narrow trait object.
