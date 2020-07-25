@@ -215,6 +215,36 @@ pub fn narrowable_rboehm(args: TokenStream, input: TokenStream) -> TokenStream {
                 unsafe { gc.assume_init() }
             }
 
+            /// Create a narrow pointer to #trait_id. `layout` must be at least big enough for an
+            /// object of type `U` (but may optionally be bigger) and must have at least the same
+            /// alignment that `U requires (but may optionally have a bigger alignment). `init`
+            /// will be called with a pointer to uninitialised memory into which a fully
+            /// initialised object of type `U` *must* be written. After `init` completes, the
+            /// object will be considered fully initialised: failure to fully initialise it causes
+            /// undefined behaviour. Note that if additional memory was requested beyond that
+            /// needed to store `U` then that extra memory does not have to be initialised after
+            /// `init` completes.
+            pub unsafe fn new_from_layout<U: #trait_id, F>(layout: ::std::alloc::Layout,
+                init: F) -> ::rboehm::Gc<Self>
+                where F: FnOnce(*mut U)
+            {
+                let (layout, uoff) = ::std::alloc::Layout::new::<usize>().extend(layout).unwrap();
+                // Check that we've not been given an object whose alignment
+                // exceeds that of a usize.
+                debug_assert_eq!(uoff, ::std::mem::size_of::<usize>());
+
+                let gc = ::rboehm::Gc::<Self>::new_from_layout(layout);
+                let baseptr = ::rboehm::Gc::into_raw(gc);
+                unsafe {
+                    let objptr = (baseptr as *mut u8).add(uoff);
+                    let t: *const dyn #trait_id = objptr as *const U;
+                    let vtable = ::std::mem::transmute::<*const dyn #trait_id, (usize, usize)>(t).1;
+                    ::std::ptr::write(baseptr as *mut usize, vtable);
+                    init(objptr as *mut U);
+                    gc.assume_init()
+                }
+            }
+
             pub fn as_gc(&self) -> ::rboehm::Gc<dyn #trait_id> {
                 use ::std::ops::Deref;
                 Gc::from_raw(self.deref() as *const _)
