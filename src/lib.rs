@@ -89,8 +89,8 @@ pub fn narrowable(args: TokenStream, input: TokenStream) -> TokenStream {
             /// otherwise.
             pub fn downcast<U: #trait_id>(&self) -> Option<&U> {
                 let t_vtable = {
-                    let t: &dyn #trait_id = unsafe { &*(0 as *const U) };
-                    unsafe { ::std::mem::transmute::<&dyn #trait_id, (usize, usize)>(t) }.1
+                    let t: *const dyn #trait_id = ::std::ptr::null() as *const U;
+                    unsafe { ::std::mem::transmute::<*const dyn #trait_id, (usize, usize)>(t) }.1
                 };
 
                 let vtable = unsafe {
@@ -236,8 +236,8 @@ pub fn narrowable_rboehm(args: TokenStream, input: TokenStream) -> TokenStream {
             /// stored an object of type `U` or `None` otherwise.
             pub fn downcast<U: #trait_id>(&self) -> Option<Gc<U>> {
                 let t_vtable = {
-                    let t: &dyn #trait_id = unsafe { &*(0 as *const U) }; //FIXME: UB
-                    unsafe { ::std::mem::transmute::<&dyn #trait_id, (usize, usize)>(t) }.1
+                    let t: *const dyn #trait_id = ::std::ptr::null() as *const U;
+                    unsafe { ::std::mem::transmute::<*const dyn #trait_id, (usize, usize)>(t) }.1
                 };
 
                 let vtable = unsafe {
