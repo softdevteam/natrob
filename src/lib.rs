@@ -175,72 +175,67 @@ pub fn narrowable_rboehm(args: TokenStream, input: TokenStream) -> TokenStream {
     let expanded = quote! {
         /// A narrow pointer to #trait_id.
         pub struct #struct_id {
-            // This struct points to a vtable pointer followed by an object. In other words, on a
-            // 64 bit machine the layout is (in bytes):
-            //   0..7: vtable
-            //   8..: object
-            // This is an inflexible layout, since we can only support structs whose alignment is
-            // the same or less than a usize's.
+            // This struct points to a vtable pointer followed by an object with no padding between
+            // the two. The vtable pointer is aligned to a machine word. The object will be aligned
+            // to `max(align(usize), align(obj))`. For example, for a word (or smaller) aligned
+            // object on a 64-bit machine the layout will look as follows (in bytes):
+            //   0..7: vtable ptr
+            //   8..:  object
+            // For a 32-byte aligned object the layout will be:
+            //   0..23:  padding
+            //   24..31: vtable ptr
+            //   32..:   object
+            // The base pointer of the memory block can be recovered using `object`'s alignment
+            // (accessible via its vtable) if necessary.
             vtable: *mut u8
         }
 
         impl #struct_id {
-            /// Create a new narrow pointer to #trait_id.
-            pub fn new<U>(v: U) -> ::rboehm::Gc<Self>
+            /// Create a new narrow pointer to `U: #trait_id`.
+            pub fn new<U>(obj: U) -> ::rboehm::Gc<Self>
             where
                 *const U: ::std::ops::CoerceUnsized<*const (dyn #trait_id + 'static)>,
                 U: #trait_id + 'static
             {
-                let (layout, uoff) = ::std::alloc::Layout::new::<usize>().extend(
-                    ::std::alloc::Layout::new::<U>()).unwrap();
-                // Check that we've not been given an object whose alignment
-                // exceeds that of a usize.
-                debug_assert_eq!(uoff, ::std::mem::size_of::<usize>());
-
-                let gc = ::rboehm::Gc::<#struct_id>::new_from_layout(layout);
-                let baseptr = ::rboehm::Gc::into_raw(gc);
                 unsafe {
-                    let objptr = (baseptr as *mut u8).add(uoff);
-                    let t: &dyn #trait_id = &v;
-                    let vtable = ::std::mem::transmute::<*const dyn #trait_id, (usize, usize)>(t).1;
-                    ::std::ptr::write(baseptr as *mut usize, vtable);
-
-                    if ::std::mem::size_of::<U>() != 0 {
-                        objptr.copy_from_nonoverlapping(&v as *const U as *const u8,
-                            ::std::mem::size_of::<U>());
-                    }
-
+                    #struct_id::new_from_layout(::std::alloc::Layout::new::<U>(),
+                        |objp: *mut U| *(&raw mut *objp) = obj
+                    )
                 }
-                ::std::mem::forget(v);
-                unsafe { gc.assume_init() }
             }
 
-            /// Create a narrow pointer to #trait_id. `layout` must be at least big enough for an
-            /// object of type `U` (but may optionally be bigger) and must have at least the same
-            /// alignment that `U requires (but may optionally have a bigger alignment). `init`
-            /// will be called with a pointer to uninitialised memory into which a fully
+            /// Create a narrow pointer to `U: #trait_id`. `layout` must be at least big enough for
+            /// an object of type `U` (but may optionally be bigger) and must have at least the
+            /// same alignment that `U requires (but may optionally have a bigger alignment).
+            /// `init` will be called with a pointer to uninitialised memory into which a fully
             /// initialised object of type `U` *must* be written. After `init` completes, the
             /// object will be considered fully initialised: failure to fully initialise it causes
             /// undefined behaviour. Note that if additional memory was requested beyond that
             /// needed to store `U` then that extra memory does not have to be initialised after
             /// `init` completes.
-            pub unsafe fn new_from_layout<U: #trait_id, F>(layout: ::std::alloc::Layout,
+            pub unsafe fn new_from_layout<U: #trait_id + 'static, F>(layout: ::std::alloc::Layout,
                 init: F) -> ::rboehm::Gc<Self>
                 where F: FnOnce(*mut U)
             {
-                let (layout, uoff) = ::std::alloc::Layout::new::<usize>().extend(layout).unwrap();
-                // Check that we've not been given an object whose alignment
-                // exceeds that of a usize.
-                debug_assert_eq!(uoff, ::std::mem::size_of::<usize>());
+                let align = ::std::cmp::max(::std::mem::size_of::<usize>(), layout.align());
+                let vtable_lyt = ::std::alloc::Layout::from_size_align(
+                    ::std::mem::size_of::<usize>(),
+                    align).unwrap();
+                let (lyt, uoff) = vtable_lyt.extend(layout).unwrap();
 
-                let gc = ::rboehm::Gc::<Self>::new_from_layout(layout);
-                let baseptr = ::rboehm::Gc::into_raw(gc);
+                let gc = ::rboehm::Gc::<Self>::new_from_layout(lyt);
+                let basep = ::rboehm::Gc::into_raw(gc) as *mut u8;
                 unsafe {
-                    let objptr = (baseptr as *mut u8).add(uoff);
-                    let t: *const dyn #trait_id = objptr as *const U;
-                    let vtable = ::std::mem::transmute::<*const dyn #trait_id, (usize, usize)>(t).1;
-                    ::std::ptr::write(baseptr as *mut usize, vtable);
-                    init(objptr as *mut U);
+                    let objp = basep.add(align);
+                    let vtablep = objp.sub(::std::mem::size_of::<usize>());
+
+                    let t: *const dyn #trait_id = objp as *const U;
+                    let vtable = ::std::mem::transmute::
+                        <*const dyn #trait_id, (usize, usize)>(t)
+                        .1;
+                    ::std::ptr::write(vtablep as *mut usize, vtable);
+
+                    init(objp as *mut U);
                     gc.assume_init()
                 }
             }
