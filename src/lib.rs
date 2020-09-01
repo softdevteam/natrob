@@ -15,7 +15,7 @@ pub fn narrowable(args: TokenStream, input: TokenStream) -> TokenStream {
     }
     let struct_id = match &args[0] {
         NestedMeta::Meta(m) => m.name(),
-        NestedMeta::Literal(_) => panic!("Literals not valid attributes to 'narrowable'")
+        NestedMeta::Literal(_) => panic!("Literals not valid attributes to 'narrowable'"),
     };
     let trait_id = &input.ident;
     let expanded = quote! {
@@ -169,7 +169,7 @@ pub fn narrowable_rboehm(args: TokenStream, input: TokenStream) -> TokenStream {
     }
     let struct_id = match &args[0] {
         NestedMeta::Meta(m) => m.name(),
-        NestedMeta::Literal(_) => panic!("Literals not valid attributes to 'narrowable'")
+        NestedMeta::Literal(_) => panic!("Literals not valid attributes to 'narrowable'"),
     };
     let trait_id = &input.ident;
     let expanded = quote! {

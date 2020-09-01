@@ -45,7 +45,9 @@ fn main() {
                 .to_str()
                 .unwrap()
                 .starts_with("test_")
-                && p.extension().and_then(|s| Some(s.to_str().unwrap() == "rs")).unwrap_or(false)
+                && p.extension()
+                    .and_then(|s| Some(s.to_str().unwrap() == "rs"))
+                    .unwrap_or(false)
         })
         // Extract the first sequence of commented line(s) as the tests.
         .test_extract(|s| {
