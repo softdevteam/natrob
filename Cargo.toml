@@ -29,3 +29,4 @@ quote = "0.6"
 abgc = []
 gcmalloc = []
 rboehm = []
+rustc_boehm = []
