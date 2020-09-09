@@ -309,3 +309,154 @@ pub fn narrowable_rboehm(args: TokenStream, input: TokenStream) -> TokenStream {
     };
     TokenStream::from(expanded)
 }
+
+#[cfg(feature = "rustc_boehm")]
+#[proc_macro_attribute]
+pub fn narrowable_rustc_boehm(args: TokenStream, input: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(args as AttributeArgs);
+    let input = parse_macro_input!(input as ItemTrait);
+    if args.len() != 1 {
+        panic!("Need precisely one argument to 'narrowable'");
+    }
+    let struct_id = match &args[0] {
+        NestedMeta::Meta(m) => m.name(),
+        NestedMeta::Literal(_) => panic!("Literals not valid attributes to 'narrowable'"),
+    };
+    let trait_id = &input.ident;
+    let expanded = quote! {
+        /// A narrow pointer to #trait_id.
+        pub struct #struct_id {
+            // This struct points to a vtable pointer followed by an object with no padding between
+            // the two. The vtable pointer is aligned to a machine word. The object will be aligned
+            // to `max(align(usize), align(obj))`. For example, for a word (or smaller) aligned
+            // object on a 64-bit machine the layout will look as follows (in bytes):
+            //   0..7: vtable ptr
+            //   8..:  object
+            // For a 32-byte aligned object the layout will be:
+            //   0..23:  padding
+            //   24..31: vtable ptr
+            //   32..:   object
+            // The base pointer of the memory block can be recovered using `object`'s alignment
+            // (accessible via its vtable) if necessary.
+            vtable: *mut u8
+        }
+
+        impl #struct_id {
+            /// Create a new narrow pointer to `U: #trait_id`.
+            pub fn new<U>(obj: U) -> ::std::gc::Gc<Self>
+            where
+                *const U: ::std::ops::CoerceUnsized<*const (dyn #trait_id + 'static)>,
+                U: #trait_id + 'static
+            {
+                unsafe {
+                    #struct_id::new_from_layout(::std::alloc::Layout::new::<U>(),
+                        |objp: *mut U| *(&raw mut *objp) = obj
+                    )
+                }
+            }
+
+            /// Create a narrow pointer to `U: #trait_id`. `layout` must be at least big enough for
+            /// an object of type `U` (but may optionally be bigger) and must have at least the
+            /// same alignment that `U requires (but may optionally have a bigger alignment).
+            /// `init` will be called with a pointer to uninitialised memory into which a fully
+            /// initialised object of type `U` *must* be written. After `init` completes, the
+            /// object will be considered fully initialised: failure to fully initialise it causes
+            /// undefined behaviour. Note that if additional memory was requested beyond that
+            /// needed to store `U` then that extra memory does not have to be initialised after
+            /// `init` completes.
+            pub unsafe fn new_from_layout<U: #trait_id + 'static, F>(layout: ::std::alloc::Layout,
+                init: F) -> ::std::gc::Gc<Self>
+                where F: FnOnce(*mut U)
+            {
+                let align = ::std::cmp::max(::std::mem::size_of::<usize>(), layout.align());
+                let vtable_lyt = ::std::alloc::Layout::from_size_align(
+                    ::std::mem::size_of::<usize>(),
+                    align).unwrap();
+                let (lyt, uoff) = vtable_lyt.extend(layout).unwrap();
+
+                let gc = ::std::gc::Gc::<Self>::new_from_layout(lyt);
+                let basep = ::std::gc::Gc::into_raw(gc) as *mut u8;
+                unsafe {
+                    let objp = basep.add(align);
+                    let vtablep = objp.sub(::std::mem::size_of::<usize>());
+
+                    let t: *const dyn #trait_id = objp as *const U;
+                    let vtable = ::std::mem::transmute::
+                        <*const dyn #trait_id, (usize, usize)>(t)
+                        .1;
+                    ::std::ptr::write(vtablep as *mut usize, vtable);
+
+                    init(objp as *mut U);
+                    gc.assume_init()
+                }
+            }
+
+            pub fn as_gc(&self) -> ::std::gc::Gc<dyn #trait_id> {
+                use ::std::ops::Deref;
+                ::std::gc::Gc::from_raw(self.deref() as *const _)
+            }
+
+            /// Convert a downcasted narrow trait object back into a normal narrow trait object.
+            /// This will lead to undefined behaviour if `o` was not originally a narrow trait
+            /// object.
+            pub unsafe fn recover_gc<T: #trait_id>(o: ::std::gc::Gc<T>) -> ::std::gc::Gc<#struct_id> {
+                unsafe {
+                    let objptr = ::std::gc::Gc::into_raw(o);
+                    let baseptr = (objptr as *const usize).sub(1);
+                    ::std::gc::Gc::from_raw(baseptr as *const u8 as *const #struct_id)
+                }
+            }
+
+            /// Try casting this narrow trait object to a concrete struct type
+            /// `U`, returning `Some(...)` if this narrow trait object has
+            /// stored an object of type `U` or `None` otherwise.
+            pub fn downcast<U: #trait_id>(&self) -> Option<::std::gc::Gc<U>> {
+                let t_vtable = {
+                    let t: *const dyn #trait_id = ::std::ptr::null() as *const U;
+                    unsafe { ::std::mem::transmute::<*const dyn #trait_id, (usize, usize)>(t) }.1
+                };
+
+                let vtable = unsafe {
+                    ::std::ptr::read(self as *const _ as *const usize)
+                };
+
+                if t_vtable == vtable {
+                    let objptr = unsafe { (self as *const _ as *const usize).add(1) };
+                    Some(unsafe { ::std::gc::Gc::from_raw(objptr as *const U) })
+                } else {
+                    None
+                }
+            }
+        }
+
+        impl ::std::ops::Deref for #struct_id {
+            type Target = dyn #trait_id;
+
+            fn deref(&self) -> &(dyn #trait_id + 'static) {
+                unsafe {
+                    let vtable = ::std::ptr::read(self as *const _ as *const usize as *mut usize);
+                    let objptr = (self as *const _ as *const usize).add(1);
+                    ::std::mem::transmute::<(*const _, usize), &dyn #trait_id>(
+                        (objptr, vtable))
+                }
+            }
+        }
+
+        impl ::std::ops::Drop for #struct_id {
+            fn drop(&mut self) {
+                let fatptr = unsafe {
+                    let vtable = ::std::ptr::read(self as *const _ as *const usize as *mut usize);
+                    let objptr = (self as *const _ as *const usize).add(1);
+                    ::std::mem::transmute::<(*const _, usize), &mut dyn #trait_id>(
+                        (objptr, vtable))
+                };
+
+                // Call `drop` on the trait object before deallocating memory.
+                unsafe { ::std::ptr::drop_in_place(fatptr as *mut dyn #trait_id) };
+            }
+        }
+
+        #input
+    };
+    TokenStream::from(expanded)
+}
