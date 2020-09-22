@@ -236,7 +236,12 @@ pub fn narrowable_rboehm(args: TokenStream, input: TokenStream) -> TokenStream {
                     ::std::ptr::write(vtablep as *mut usize, vtable);
 
                     init(objp as *mut U);
-                    gc.assume_init()
+                    let mut init = gc.assume_init();
+
+                    if !::rboehm::gc::needs_finalizer::<U>() {
+                        init.unregister_finalizer()
+                    }
+                    init
                 }
             }
 
