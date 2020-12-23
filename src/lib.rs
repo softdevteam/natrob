@@ -159,9 +159,9 @@ pub fn narrowable(args: TokenStream, input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
-#[cfg(feature = "rboehm")]
+#[cfg(feature = "libgc")]
 #[proc_macro_attribute]
-pub fn narrowable_rboehm(args: TokenStream, input: TokenStream) -> TokenStream {
+pub fn narrowable_libgc(args: TokenStream, input: TokenStream) -> TokenStream {
     let args = parse_macro_input!(args as AttributeArgs);
     let input = parse_macro_input!(input as ItemTrait);
     if args.len() != 1 {
@@ -192,7 +192,7 @@ pub fn narrowable_rboehm(args: TokenStream, input: TokenStream) -> TokenStream {
 
         impl #struct_id {
             /// Create a new narrow pointer to `U: #trait_id`.
-            pub fn new<U>(obj: U) -> ::rboehm::Gc<Self>
+            pub fn new<U>(obj: U) -> ::libgc::Gc<Self>
             where
                 *const U: ::std::ops::CoerceUnsized<*const (dyn #trait_id + 'static)>,
                 U: #trait_id + 'static
@@ -214,7 +214,7 @@ pub fn narrowable_rboehm(args: TokenStream, input: TokenStream) -> TokenStream {
             /// needed to store `U` then that extra memory does not have to be initialised after
             /// `init` completes.
             pub unsafe fn new_from_layout<U: #trait_id + 'static, F>(layout: ::std::alloc::Layout,
-                init: F) -> ::rboehm::Gc<Self>
+                init: F) -> ::libgc::Gc<Self>
                 where F: FnOnce(*mut U)
             {
                 let align = ::std::cmp::max(::std::mem::size_of::<usize>(), layout.align());
@@ -223,8 +223,8 @@ pub fn narrowable_rboehm(args: TokenStream, input: TokenStream) -> TokenStream {
                     align).unwrap();
                 let (lyt, uoff) = vtable_lyt.extend(layout).unwrap();
 
-                let gc = ::rboehm::Gc::<Self>::new_from_layout(lyt);
-                let basep = ::rboehm::Gc::into_raw(gc) as *mut u8;
+                let gc = ::libgc::Gc::<Self>::new_from_layout(lyt);
+                let basep = ::libgc::Gc::into_raw(gc) as *mut u8;
                 unsafe {
                     let objp = basep.add(align);
                     let vtablep = objp.sub(::std::mem::size_of::<usize>());
@@ -238,14 +238,14 @@ pub fn narrowable_rboehm(args: TokenStream, input: TokenStream) -> TokenStream {
                     init(objp as *mut U);
                     let mut init = gc.assume_init();
 
-                    if !::rboehm::gc::needs_finalizer::<U>() {
+                    if !::libgc::gc::needs_finalizer::<U>() {
                         init.unregister_finalizer()
                     }
                     init
                 }
             }
 
-            pub fn as_gc(&self) -> ::rboehm::Gc<dyn #trait_id> {
+            pub fn as_gc(&self) -> ::libgc::Gc<dyn #trait_id> {
                 use ::std::ops::Deref;
                 Gc::from_raw(self.deref() as *const _)
             }
@@ -253,7 +253,7 @@ pub fn narrowable_rboehm(args: TokenStream, input: TokenStream) -> TokenStream {
             /// Convert a downcasted narrow trait object back into a normal narrow trait object.
             /// This will lead to undefined behaviour if `o` was not originally a narrow trait
             /// object.
-            pub unsafe fn recover_gc<T: #trait_id>(o: Gc<T>) -> ::rboehm::Gc<#struct_id> {
+            pub unsafe fn recover_gc<T: #trait_id>(o: Gc<T>) -> ::libgc::Gc<#struct_id> {
                 unsafe {
                     let objptr = Gc::into_raw(o);
                     let baseptr = (objptr as *const usize).sub(1);

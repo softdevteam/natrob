@@ -28,5 +28,5 @@ quote = "0.6"
 [features]
 abgc = []
 gcmalloc = []
-rboehm = []
+libgc = []
 rustc_boehm = []
