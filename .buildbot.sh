@@ -13,8 +13,8 @@ sh rustup.sh --default-host x86_64-unknown-linux-gnu \
     -y
 export PATH=`pwd`/.cargo/bin/:$PATH
 
-cargo clean
 cargo test
+cargo clean
 cargo test --release
 
 rustup toolchain install nightly --allow-downgrade --component rustfmt
