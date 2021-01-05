@@ -16,6 +16,7 @@ proc-macro = true
 name = "proc_macro_tests"
 path = "proc_macro_tests/run.rs"
 harness = false
+crate-type = ["proc-macro"]
 
 [dev-dependencies]
 lang_tester = "0.3"
