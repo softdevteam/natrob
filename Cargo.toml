@@ -19,7 +19,7 @@ harness = false
 crate-type = ["proc-macro"]
 
 [dev-dependencies]
-lang_tester = "0.3"
+lang_tester = "0.5"
 tempfile = "3"
 
 [dependencies]
