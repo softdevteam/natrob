@@ -192,7 +192,7 @@ pub fn narrowable_libgc(args: TokenStream, input: TokenStream) -> TokenStream {
 
         impl #struct_id {
             /// Create a new narrow pointer to `U: #trait_id`.
-            pub fn new<U>(obj: U) -> ::libgc::Gc<Self>
+            pub fn new<U: Send>(obj: U) -> ::libgc::Gc<Self>
             where
                 *const U: ::std::ops::CoerceUnsized<*const (dyn #trait_id + 'static)>,
                 U: #trait_id + 'static
@@ -282,6 +282,8 @@ pub fn narrowable_libgc(args: TokenStream, input: TokenStream) -> TokenStream {
                 }
             }
         }
+
+        unsafe impl Send for #struct_id {}
 
         impl ::std::ops::Deref for #struct_id {
             type Target = dyn #trait_id;
