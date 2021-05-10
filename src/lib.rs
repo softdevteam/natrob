@@ -167,40 +167,73 @@ pub fn narrowable_libgc(args: TokenStream, input: TokenStream) -> TokenStream {
     if args.len() != 1 {
         panic!("Need precisely one argument to 'narrowable'");
     }
-    let struct_id = match &args[0] {
+    let struct_short_id = match &args[0] {
         NestedMeta::Meta(m) => m.name(),
         NestedMeta::Literal(_) => panic!("Literals not valid attributes to 'narrowable'"),
     };
+    let struct_long_id = syn::Ident::new(
+        &format!("__{}_NatRobInternalLong", struct_short_id.to_string()),
+        struct_short_id.span(),
+    );
+    let struct_union_id = syn::Ident::new(
+        &format!("__{}_NatRobInternalUnion", struct_short_id.to_string()),
+        struct_short_id.span(),
+    );
     let trait_id = &input.ident;
     let expanded = quote! {
-        /// A narrow pointer to #trait_id.
-        pub struct #struct_id {
-            // This struct points to a vtable pointer followed by an object with no padding between
-            // the two. The vtable pointer is aligned to a machine word. The object will be aligned
-            // to `max(align(usize), align(obj))`. For example, for a word (or smaller) aligned
-            // object on a 64-bit machine the layout will look as follows (in bytes):
-            //   0..7: vtable ptr
-            //   8..:  object
-            // For a 32-byte aligned object the layout will be:
-            //   0..23:  padding
-            //   24..31: vtable ptr
-            //   32..:   object
-            // The base pointer of the memory block can be recovered using `object`'s alignment
-            // (accessible via its vtable) if necessary.
-            vtable: *mut u8
+        // We use this union to type pun between:
+        //   short: struct T { vtable } // #struct_short_id
+        //   long: struct U { vtable, obj } // #struct_long_id
+        // The union and the two structs are all repr(C) to guarantee layout (C99 guarantees that
+        // if a union's constituent structs share the same values then one can safely pun between
+        // them). We also rely on Rust's guarantee that ManuallyDrop does not affect layout.
+        //
+        // Note that we do not impose a `#trait_id` constraint on `U` because in
+        // `#struct_short_id::deref` we need to reference a concrete type `T` and we can't magic
+        // one out of thin air that `:#trait_id`. Instead we create a `struct_union_id<u8>`. This
+        // means that we can only create instances of this union that have an alignment less than
+        // or equal to that of a `u8`. This is enforced with an `assert` in #struct_short_id::new().
+        #[repr(C)]
+        union #struct_union_id<U> {
+            short: ::std::mem::ManuallyDrop<#struct_short_id>,
+            long: ::std::mem::ManuallyDrop<#struct_long_id<U>>,
         }
 
-        impl #struct_id {
+        unsafe impl<U: Send> Send for #struct_union_id<U> {}
+
+        impl<U: ::std::gc::NoFinalize> ::std::gc::NoFinalize for #struct_union_id<U> {}
+
+        impl<U> ::std::ops::Drop for #struct_union_id<U> {
+            fn drop(&mut self) {
+                unsafe {
+                    ::std::mem::ManuallyDrop::drop(&mut self.long);
+                }
+            }
+        }
+
+        /// A narrow pointer to #trait_id.
+        #[repr(C)]
+        pub struct #struct_short_id {
+            vtable: *const u8
+        }
+
+        impl #struct_short_id {
             /// Create a new narrow pointer to `U: #trait_id`.
             pub fn new<U: Send>(obj: U) -> ::std::gc::Gc<Self>
             where
                 *const U: ::std::ops::CoerceUnsized<*const (dyn #trait_id + 'static)>,
                 U: #trait_id + 'static
             {
+                assert_eq!(::std::mem::align_of::<#struct_long_id<U>>(),
+                  ::std::mem::align_of::<#struct_long_id<u8>>());
+                let vtable = unsafe { ::std::mem::transmute::
+                    <*const dyn #trait_id, (*const u8, *const u8)>(&obj) }
+                    .1;
+                let gc = ::std::gc::Gc::new(#struct_union_id {
+                    long: ::std::mem::ManuallyDrop::new(#struct_long_id { vtable, obj })
+                });
                 unsafe {
-                    #struct_id::new_from_layout(::std::alloc::Layout::new::<U>(),
-                        |objp: *mut U| *(&raw mut *objp) = obj
-                    )
+                    ::std::gc::Gc::from_raw(&*gc.short as *const Self)
                 }
             }
 
@@ -253,11 +286,11 @@ pub fn narrowable_libgc(args: TokenStream, input: TokenStream) -> TokenStream {
             /// Convert a downcasted narrow trait object back into a normal narrow trait object.
             /// This will lead to undefined behaviour if `o` was not originally a narrow trait
             /// object.
-            pub unsafe fn recover_gc<T: #trait_id>(o: Gc<T>) -> ::std::gc::Gc<#struct_id> {
+            pub unsafe fn recover_gc<T: #trait_id>(o: Gc<T>) -> ::std::gc::Gc<#struct_short_id> {
                 unsafe {
                     let objptr = Gc::into_raw(o);
                     let baseptr = (objptr as *const usize).sub(1);
-                    Gc::from_raw(baseptr as *const u8 as *const #struct_id)
+                    Gc::from_raw(baseptr as *const u8 as *const #struct_short_id)
                 }
             }
 
@@ -283,34 +316,27 @@ pub fn narrowable_libgc(args: TokenStream, input: TokenStream) -> TokenStream {
             }
         }
 
-        unsafe impl Send for #struct_id {}
+        unsafe impl Send for #struct_short_id {}
 
-        impl ::std::ops::Deref for #struct_id {
+        impl ::std::ops::Deref for #struct_short_id {
             type Target = dyn #trait_id;
 
             fn deref(&self) -> &(dyn #trait_id + 'static) {
                 unsafe {
-                    let vtable = ::std::ptr::read(self as *const _ as *const usize as *mut usize);
-                    let objptr = (self as *const _ as *const usize).add(1);
-                    ::std::mem::transmute::<(*const _, usize), &dyn #trait_id>(
-                        (objptr, vtable))
+                    let u = &*(self as *const #struct_short_id as *const #struct_union_id<u8>);
+                    ::std::mem::transmute::<(*const _, *const _), &dyn #trait_id>(
+                      (&u.long.obj as *const _, u.long.vtable))
                 }
             }
         }
 
-        impl ::std::ops::Drop for #struct_id {
-            fn drop(&mut self) {
-                let fatptr = unsafe {
-                    let vtable = ::std::ptr::read(self as *const _ as *const usize as *mut usize);
-                    let objptr = (self as *const _ as *const usize).add(1);
-                    ::std::mem::transmute::<(*const _, usize), &mut dyn #trait_id>(
-                        (objptr, vtable))
-                };
-
-                // Call `drop` on the trait object before deallocating memory.
-                unsafe { ::std::ptr::drop_in_place(fatptr as *mut dyn #trait_id) };
-            }
+        #[repr(C)]
+        struct #struct_long_id<U> {
+            vtable: *const u8,
+            obj: U
         }
+
+        unsafe impl<U> Send for #struct_long_id<U> {}
 
         #input
     };
