@@ -237,47 +237,6 @@ pub fn narrowable_rustgc(args: TokenStream, input: TokenStream) -> TokenStream {
                 }
             }
 
-            /// Create a narrow pointer to `U: #trait_id`. `layout` must be at least big enough for
-            /// an object of type `U` (but may optionally be bigger) and must have at least the
-            /// same alignment that `U requires (but may optionally have a bigger alignment).
-            /// `init` will be called with a pointer to uninitialised memory into which a fully
-            /// initialised object of type `U` *must* be written. After `init` completes, the
-            /// object will be considered fully initialised: failure to fully initialise it causes
-            /// undefined behaviour. Note that if additional memory was requested beyond that
-            /// needed to store `U` then that extra memory does not have to be initialised after
-            /// `init` completes.
-            pub unsafe fn new_from_layout<U: #trait_id + 'static, F>(layout: ::std::alloc::Layout,
-                init: F) -> ::std::gc::Gc<Self>
-                where F: FnOnce(*mut U)
-            {
-                let align = ::std::cmp::max(::std::mem::size_of::<usize>(), layout.align());
-                let vtable_lyt = ::std::alloc::Layout::from_size_align(
-                    ::std::mem::size_of::<usize>(),
-                    align).unwrap();
-                let (lyt, uoff) = vtable_lyt.extend(layout).unwrap();
-
-                let gc = ::std::gc::Gc::<Self>::new_from_layout(lyt);
-                let basep = ::std::gc::Gc::into_raw(gc) as *mut u8;
-                unsafe {
-                    let objp = basep.add(align);
-                    let vtablep = objp.sub(::std::mem::size_of::<usize>());
-
-                    let t: *const dyn #trait_id = objp as *const U;
-                    let vtable = ::std::mem::transmute::
-                        <*const dyn #trait_id, (usize, usize)>(t)
-                        .1;
-                    ::std::ptr::write(vtablep as *mut usize, vtable);
-
-                    init(objp as *mut U);
-                    let mut init = gc.assume_init();
-
-                    if !::std::mem::needs_finalizer::<U>() {
-                        init.unregister_finalizer()
-                    }
-                    init
-                }
-            }
-
             pub fn as_gc(&self) -> ::std::gc::Gc<dyn #trait_id> {
                 use ::std::ops::Deref;
                 Gc::from_raw(self.deref() as *const _)
