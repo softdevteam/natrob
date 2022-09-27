@@ -229,9 +229,9 @@ pub fn narrowable_rustgc(args: TokenStream, input: TokenStream) -> TokenStream {
                 let vtable = unsafe { ::std::mem::transmute::
                     <*const dyn #trait_id, (*const u8, *const u8)>(&obj) }
                     .1;
-                let gc = ::std::gc::Gc::new(#struct_union_id {
+                let gc = unsafe { ::std::gc::Gc::new_unsynchronised(#struct_union_id {
                     long: ::std::mem::ManuallyDrop::new(#struct_long_id { vtable, obj })
-                });
+                })};
                 unsafe {
                     ::std::gc::Gc::from_raw(&*gc.short as *const Self)
                 }
@@ -275,8 +275,6 @@ pub fn narrowable_rustgc(args: TokenStream, input: TokenStream) -> TokenStream {
             }
         }
 
-        unsafe impl Send for #struct_short_id {}
-
         impl ::std::ops::Deref for #struct_short_id {
             type Target = dyn #trait_id;
 
@@ -295,7 +293,8 @@ pub fn narrowable_rustgc(args: TokenStream, input: TokenStream) -> TokenStream {
             obj: U
         }
 
-        unsafe impl<U> Send for #struct_long_id<U> {}
+        unsafe impl<U: Send> Send for #struct_long_id<U> {}
+        unsafe impl<U: Sync> Sync for #struct_long_id<U> {}
 
         #input
     };
