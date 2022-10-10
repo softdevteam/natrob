@@ -200,7 +200,9 @@ pub fn narrowable_rustgc(args: TokenStream, input: TokenStream) -> TokenStream {
         }
 
         unsafe impl<U: Send> Send for #struct_union_id<U> {}
+        unsafe impl<U: Sync> Sync for #struct_union_id<U> {}
 
+        unsafe impl<U: FinalizerSafe> FinalizerSafe for #struct_union_id<U> {}
         unsafe impl<U: ::std::gc::NoFinalize> ::std::gc::NoFinalize for #struct_union_id<U> {}
 
         impl<U> ::std::ops::Drop for #struct_union_id<U> {
@@ -219,7 +221,7 @@ pub fn narrowable_rustgc(args: TokenStream, input: TokenStream) -> TokenStream {
 
         impl #struct_short_id {
             /// Create a new narrow pointer to `U: #trait_id`.
-            pub fn new<U: Send>(obj: U) -> ::std::gc::Gc<Self>
+            pub fn new<U>(obj: U) -> ::std::gc::Gc<Self>
             where
                 *const U: ::std::ops::CoerceUnsized<*const (dyn #trait_id + 'static)>,
                 U: #trait_id + 'static
@@ -275,8 +277,6 @@ pub fn narrowable_rustgc(args: TokenStream, input: TokenStream) -> TokenStream {
             }
         }
 
-        unsafe impl Send for #struct_short_id {}
-
         impl ::std::ops::Deref for #struct_short_id {
             type Target = dyn #trait_id;
 
@@ -294,8 +294,6 @@ pub fn narrowable_rustgc(args: TokenStream, input: TokenStream) -> TokenStream {
             vtable: *const u8,
             obj: U
         }
-
-        unsafe impl<U> Send for #struct_long_id<U> {}
 
         #input
     };
