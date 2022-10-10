@@ -277,8 +277,6 @@ pub fn narrowable_rustgc(args: TokenStream, input: TokenStream) -> TokenStream {
             }
         }
 
-        unsafe impl Send for #struct_short_id {}
-
         impl ::std::ops::Deref for #struct_short_id {
             type Target = dyn #trait_id;
 
@@ -296,8 +294,6 @@ pub fn narrowable_rustgc(args: TokenStream, input: TokenStream) -> TokenStream {
             vtable: *const u8,
             obj: U
         }
-
-        unsafe impl<U> Send for #struct_long_id<U> {}
 
         #input
     };
