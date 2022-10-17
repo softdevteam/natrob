@@ -21,7 +21,7 @@ pub fn narrowable(args: TokenStream, input: TokenStream) -> TokenStream {
     let expanded = quote! {
         /// A narrow pointer to #trait_id.
         #[repr(C)]
-        struct #struct_id {
+        pub struct #struct_id {
             // A pointer to an object; immediately preceding that object is a usized pointer to the
             // object's vtable. In other words, on a 64 bit machine the layout is (in bytes):
             //   -8..-1: vtable
