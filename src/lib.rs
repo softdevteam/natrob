@@ -159,9 +159,9 @@ pub fn narrowable(args: TokenStream, input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
-#[cfg(feature = "rustgc")]
+#[cfg(feature = "alloy")]
 #[proc_macro_attribute]
-pub fn narrowable_rustgc(args: TokenStream, input: TokenStream) -> TokenStream {
+pub fn narrowable_alloy(args: TokenStream, input: TokenStream) -> TokenStream {
     let args = parse_macro_input!(args as AttributeArgs);
     let input = parse_macro_input!(input as ItemTrait);
     if args.len() != 1 {
