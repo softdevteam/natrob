@@ -202,7 +202,6 @@ pub fn narrowable_alloy(args: TokenStream, input: TokenStream) -> TokenStream {
         unsafe impl<U: Send> Send for #struct_union_id<U> {}
         unsafe impl<U: Sync> Sync for #struct_union_id<U> {}
 
-        unsafe impl<U: FinalizerSafe> FinalizerSafe for #struct_union_id<U> {}
         unsafe impl<U> ::std::gc::DropMethodFinalizerElidable for #struct_union_id<U> {}
 
         impl<U> ::std::ops::Drop for #struct_union_id<U> {
@@ -231,9 +230,9 @@ pub fn narrowable_alloy(args: TokenStream, input: TokenStream) -> TokenStream {
                 let vtable = unsafe { ::std::mem::transmute::
                     <*const dyn #trait_id, (*const u8, *const u8)>(&obj) }
                     .1;
-                let gc = ::std::gc::Gc::new(#struct_union_id {
+                let gc = unsafe { ::std::gc::Gc::new(::std::gc::FinalizeUnchecked::new(#struct_union_id {
                     long: ::std::mem::ManuallyDrop::new(#struct_long_id { vtable, obj })
-                });
+                }))};
                 unsafe {
                     ::std::gc::Gc::from_raw(&*gc.short as *const Self)
                 }
